@@ -3,7 +3,9 @@ import csv
 import pickle
 import nltk
 from nltk.tokenize import word_tokenize
+from nltk.tokenize import sent_tokenize
 from nltk.corpus import stopwords
+from nltk.util import ngrams
 from nltk.classify import NaiveBayesClassifier
 from nltk.classify.util import accuracy
 from syrics.api import Spotify
@@ -20,8 +22,8 @@ syrics = Spotify(sp_dc)
 
 # Initialize stop words
 stop_words = set(stopwords.words('spanish'))
-# ignore_words = ["Ea"]
-# stop_words.update(ignore_words)
+ignore_words = ["si", "va", "cómo", "pa", "oh", "yeah", "yah", "yeh", "sé", "así"]
+stop_words.update(ignore_words)
 
 # Define playlist URLs
 training_playlists = {
@@ -43,34 +45,61 @@ def fetch_tracks():
         # Append tracks to corresponding playlists
         playlist_tracks[playlist_name] = [track['track']['id'] for track in playlist_data['tracks']['items']]
 
-def read_lyrics(track_id, playlist_name):
-    lyrics_file = os.path.join(CACHE_DIR, f"{track_id}")
-    if os.path.exists(lyrics_file):
-        with open(lyrics_file, 'r', encoding='utf-8') as file:
-            return file.read().strip()
-    else:
-        # Hack for no lyrics, use category in place of lyrics
-        return playlist_name
-
 # Create bag of words model
 def extract_lyrics_features(lyrics):
     tokens = word_tokenize(lyrics.lower())
-    # I could use list expansion but its messy
+    # I could use list expansion but it looks messy
     filtered_tokens = []
     for token in tokens:
         if token.isalpha() and token not in stop_words:
             filtered_tokens.append(token)
+
+    # Feature engineering: generate bigrams/trigrams for increased accuracy
+    bigrams = list(ngrams(filtered_tokens, 2))
+    trigrams = list(ngrams(filtered_tokens, 3))
+
+    bi = [' '.join(bigram) for bigram in bigrams]
+    tri = [' '.join(trigram) for trigram in trigrams]
+    
+    features = filtered_tokens + bi + tri
+
     # Feature representation of lyrics for sentiment analysis
-    return dict((word, True) for word in filtered_tokens)
+    return dict((word, True) for word in features)
+
+def read_lyrics(track_id, playlist_name):
+    lyrics_file = os.path.join(CACHE_DIR, f"{track_id}")
+    if os.path.exists(lyrics_file):
+        with open(lyrics_file, 'r', encoding='utf-8') as file:
+            lyrics = file.read()
+            sentences = sent_tokenize(lyrics)
+            # Append each sentence as a separate entry in the dataset
+            dataset_entries = []
+            for sentence in sentences:
+                lyrics_features = extract_lyrics_features(sentence)
+                dataset_entries.append((lyrics_features, playlist_name))
+            return dataset_entries
+            # Deprecated; no advanced tokenization
+            # lyrics = file.read().strip()
+            # return lyrics
+    else:
+        # Hack for no lyrics, use category in place of lyrics
+        format_name = extract_lyrics_features(playlist_name)
+        return [(format_name, playlist_name)]
 
 # Prepare data entries for csv
 def construct_dataset_entries():
     dataset = []
     for playlist_name in playlist_tracks:
         for track_id in playlist_tracks[playlist_name]:
-            lyrics = read_lyrics(track_id, playlist_name)
-            lyrics_features = extract_lyrics_features(lyrics)
-            dataset.append((lyrics_features, playlist_name))
+            # Read lyrics and extract features
+            lyrics_entries = read_lyrics(track_id, playlist_name)
+            for lyrics_features, playlist_name in lyrics_entries:
+                dataset.append((lyrics_features, playlist_name))
+
+            # Deprecated; no advanced tokenization
+            # lyrics = read_lyrics(track_id, playlist_name)
+            # lyrics_features = extract_lyrics_features(lyrics)
+            # dataset.append((lyrics_features, playlist_name))
     return dataset
 
 def dataset_to_csv(dataset):
@@ -123,10 +152,24 @@ def classify_test_lyrics():
                 sentiment = predict_sentiment(lyrics)
                 print(f"{track_id}: {sentiment}")
 
+def display_menu():
+    message = """\nWelcome to LyricsNLP:
+    1. Train classifier
+    2. Classify test lyrics
+    3. Exit
+    """
+    print(message)
 
 def main():
-    # train_classifier()
-    classify_test_lyrics()
+    display_menu()
+    choice = input("Choice: ")
+    choice = int(choice) if choice.isnumeric() else 0
+    if choice == 1:
+        train_classifier()
+    elif choice == 2:
+        classify_test_lyrics()
+    else:
+        exit()
 
 if __name__ == "__main__":
     main()
