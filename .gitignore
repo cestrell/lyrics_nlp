@@ -1,0 +1,4 @@
+.cache/
+SP_DC_KEY.txt
+classifier.pickle
+labeled_lyrics.csv
