@@ -1,9 +1,7 @@
 import os
 import csv
 import pickle
-import nltk
 from nltk.tokenize import word_tokenize
-from nltk.tokenize import sent_tokenize
 from nltk.corpus import stopwords
 from nltk.util import ngrams
 from nltk.classify import NaiveBayesClassifier
@@ -37,6 +35,14 @@ training_playlists = {
 # Record tracks in each training playlist
 playlist_tracks = {}
 
+# PLS BE RIGHT
+def print_playlist_tracks():
+    count = 0
+    for playlist_name in playlist_tracks:
+        for track_id in playlist_tracks[playlist_name]:
+            print(f"{count}. play: {playlist_name}, id: {track_id}")
+            count += 1
+
 # Retrieve tracks in each training playlist
 def fetch_tracks():
     for playlist_name, playlist_url in training_playlists.items():
@@ -66,40 +72,25 @@ def extract_lyrics_features(lyrics):
     # Feature representation of lyrics for sentiment analysis
     return dict((word, True) for word in features)
 
-def read_lyrics(track_id, playlist_name):
+def read_lyrics(track_id):
     lyrics_file = os.path.join(CACHE_DIR, f"{track_id}")
     if os.path.exists(lyrics_file):
         with open(lyrics_file, 'r', encoding='utf-8') as file:
-            lyrics = file.read()
-            sentences = sent_tokenize(lyrics)
-            # Append each sentence as a separate entry in the dataset
-            dataset_entries = []
-            for sentence in sentences:
-                lyrics_features = extract_lyrics_features(sentence)
-                dataset_entries.append((lyrics_features, playlist_name))
-            return dataset_entries
-            # Deprecated; no advanced tokenization
-            # lyrics = file.read().strip()
-            # return lyrics
+            return file.read().strip()
     else:
         # Hack for no lyrics, use category in place of lyrics
-        format_name = extract_lyrics_features(playlist_name)
-        return [(format_name, playlist_name)]
+        return None
 
 # Prepare data entries for csv
 def construct_dataset_entries():
     dataset = []
+
     for playlist_name in playlist_tracks:
         for track_id in playlist_tracks[playlist_name]:
-            # Read lyrics and extract features
-            lyrics_entries = read_lyrics(track_id, playlist_name)
-            for lyrics_features, playlist_name in lyrics_entries:
+            lyrics = read_lyrics(track_id)
+            if lyrics is not None:
+                lyrics_features = extract_lyrics_features(lyrics)
                 dataset.append((lyrics_features, playlist_name))
-
-            # Deprecated; no advanced tokenization
-            # lyrics = read_lyrics(track_id, playlist_name)
-            # lyrics_features = extract_lyrics_features(lyrics)
-            # dataset.append((lyrics_features, playlist_name))
     return dataset
 
 def dataset_to_csv(dataset):
@@ -166,6 +157,7 @@ def main():
     choice = int(choice) if choice.isnumeric() else 0
     if choice == 1:
         train_classifier()
+        print_playlist_tracks()
     elif choice == 2:
         classify_test_lyrics()
     else:
